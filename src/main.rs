@@ -1,9 +1,10 @@
 use ark_bls12_381::{Bls12_381, G1Projective};
 use ark_ec::{PairingEngine, ProjectiveCurve};
-use ark_ff::{PrimeField, Zero};
+use ark_ff::BigInteger256;
+use ark_ff::{BigInteger, PrimeField, Zero};
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
-use ark_std::UniformRand;
+use ark_std::UniformRand; // 确保导入正确的 BigInteger 类型
 
 fn main() {
     let (points, scalars) = generate_random_points_and_scalars(10);
@@ -81,11 +82,62 @@ fn b_bit_msm(
     b: usize,
     c: usize,
 ) -> G1Projective {
-    let n = scalars.len();
     //scalars = a1,a2,a3 ... an
 
     //分成 b / c = k组，有k个向量，也就是T1,T2 ... Tk
     //Ti同样有n个元素
+    // 初始化向量，用于存储k个c-bit MSM的结果点
+    let k = b / c; // 分组数量
+    let mut t_points: Vec<G1Projective> = Vec::new();
+
+    // 对每组标量的c位块进行c-bit MSM
+    for j in 0..k {
+        let mut scalars_c_bits = vec![<Bls12_381 as PairingEngine>::Fr::zero(); scalars.len()];
+        for (i, scalar) in scalars.iter().enumerate() {
+            let c_bit_chunk = get_c_bit_chunk(scalar, j, c);
+            scalars_c_bits[i] = c_bit_chunk;
+        }
+        // 计算每组的c-bit MSM并存储结果点
+        t_points.push(c_bit_msm(points, &scalars_c_bits, c));
+    }
+
+    // 从第一个结果点开始，将其作为初始累加结果
+    let mut result = t_points[0];
+
+    // 遍历其余的结果点，每次将累加结果翻倍c次，然后加上下一个结果点
+    for j in 1..k {
+        for _ in 0..c {
+            result = result.double(); // 翻倍c次
+        }
+        result += &t_points[j]; // 加上下一个结果点
+    }
+
+    result // 返回最终的累加结果点
+}
+fn get_c_bit_chunk(
+    scalar: &<Bls12_381 as PairingEngine>::Fr,
+    chunk_index: usize,
+    chunk_size: usize,
+) -> <Bls12_381 as PairingEngine>::Fr {
+    // 将标量转换为其 BigInteger 表示
+    let scalar_repr = scalar.into_repr();
+
+    // 计算位块的起始和结束位置
+    let start_bit = chunk_index * chunk_size;
+    let end_bit = start_bit + chunk_size;
+
+    // 获取 BigInteger 的位表示
+    let bits = scalar_repr.to_bits_le();
+
+    // 提取所需的位块
+    let chunk_bits = bits[start_bit..std::cmp::min(end_bit, bits.len())].to_vec();
+
+    // 构建一个新的 BigInteger 表示
+    let chunk_repr =
+        <<Bls12_381 as PairingEngine>::Fr as PrimeField>::BigInt::from_bits_le(&chunk_bits);
+
+    // 将 BigInteger 转换回 Fr 元素
+    <Bls12_381 as PairingEngine>::Fr::from_repr(chunk_repr).unwrap()
 }
 
 #[cfg(test)]
@@ -108,12 +160,12 @@ mod tests {
         // 执行 MSM
         let c = 4;
         let naive_msm_result = naive_msm(&points, &scalars);
-        let c_bit_msm_result = c_bit_msm(&points, &scalars, c);
+        let b_bit_msm_result = b_bit_msm(&points, &scalars, 255, c);
 
         // 转换结果为仿射坐标进行比较
         assert_eq!(
             naive_msm_result.into_affine(),
-            c_bit_msm_result.into_affine()
+            b_bit_msm_result.into_affine()
         );
     }
 }
