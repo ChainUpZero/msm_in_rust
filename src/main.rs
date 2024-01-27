@@ -1,6 +1,5 @@
 use ark_bls12_381::{Bls12_381, G1Projective};
 use ark_ec::{PairingEngine, ProjectiveCurve};
-use ark_ff::BigInteger256;
 use ark_ff::{BigInteger, PrimeField, Zero};
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
@@ -97,6 +96,8 @@ fn b_bit_msm(
             let c_bit_chunk = get_c_bit_chunk(scalar, j, c);
             scalars_c_bits[i] = c_bit_chunk;
         }
+        // println!("original scalars: {:?}", scalars);
+        // println!("scalars_c_bits: {:?}", scalars_c_bits);
         // 计算每组的c-bit MSM并存储结果点
         t_points.push(c_bit_msm(points, &scalars_c_bits, c));
     }
@@ -127,17 +128,21 @@ fn get_c_bit_chunk(
     let end_bit = start_bit + chunk_size;
 
     // 获取 BigInteger 的位表示
-    let bits = scalar_repr.to_bits_le();
-
+    let bits = scalar_repr.to_bits_be();
+    println!("bits:{:?}", bits);
     // 提取所需的位块
     let chunk_bits = bits[start_bit..std::cmp::min(end_bit, bits.len())].to_vec();
 
+    println!("chunk_bits:{:?}", chunk_bits);
     // 构建一个新的 BigInteger 表示
     let chunk_repr =
-        <<Bls12_381 as PairingEngine>::Fr as PrimeField>::BigInt::from_bits_le(&chunk_bits);
+        <<Bls12_381 as PairingEngine>::Fr as PrimeField>::BigInt::from_bits_be(&chunk_bits);
+    println!("chunk_repr:{:?}", chunk_repr);
 
     // 将 BigInteger 转换回 Fr 元素
-    <Bls12_381 as PairingEngine>::Fr::from_repr(chunk_repr).unwrap()
+    let res = <Bls12_381 as PairingEngine>::Fr::from_repr(chunk_repr).unwrap();
+    println!("Fr chunk_repr:{:?}", res);
+    res
 }
 
 #[cfg(test)]
@@ -145,27 +150,60 @@ mod tests {
     use super::*;
     use ark_ec::PairingEngine;
 
+    use ark_std::test_rng;
+
     #[test]
     fn test_msm() {
         // 创建测试数据
-        let points = vec![
-            G1Projective::prime_subgroup_generator(),
-            G1Projective::prime_subgroup_generator().double(),
-        ];
-        let scalars = vec![
-            <Bls12_381 as PairingEngine>::Fr::from(2u64),
-            <Bls12_381 as PairingEngine>::Fr::from(5u64),
-        ];
-
+        // let points = vec![
+        //     G1Projective::prime_subgroup_generator(),
+        //     G1Projective::prime_subgroup_generator().double(),
+        // ];
+        // let scalars = vec![
+        //     <Bls12_381 as PairingEngine>::Fr::from(2u64),
+        //     <Bls12_381 as PairingEngine>::Fr::from(5u64),
+        // ];
+        let (points, scalars) = generate_random_points_and_scalars(3);
         // 执行 MSM
-        let c = 4;
+
         let naive_msm_result = naive_msm(&points, &scalars);
-        let b_bit_msm_result = b_bit_msm(&points, &scalars, 255, c);
+        let b_bit_msm_result = b_bit_msm(&points, &scalars, 256, 4);
 
         // 转换结果为仿射坐标进行比较
         assert_eq!(
             naive_msm_result.into_affine(),
             b_bit_msm_result.into_affine()
         );
+    }
+    #[test]
+    fn test_get_c_bit_chunk() {
+        let mut rng = test_rng();
+
+        // 生成一个随机标量
+        let scalar = <Bls12_381 as PairingEngine>::Fr::rand(&mut rng);
+
+        // 定义要提取的位块的大小和索引
+        let chunk_index = 0; // 可以选择不同的索引进行测试
+        let chunk_size = 16; // 例如，提取16位
+
+        // 使用函数提取位块
+        let chunk = get_c_bit_chunk(&scalar, chunk_index, chunk_size);
+
+        // 将原始标量和提取的位块转换为位表示形式
+        let scalar_bits = scalar.into_repr().to_bits_be(); //最大在低位
+                                                           // let chunk_bits = chunk.into_repr().to_bits_be();
+                                                           // // println!("original scalar {:?}", scalar);
+                                                           // // println!("scalar_bits:{:?}", scalar_bits);
+                                                           // // 计算期望的位块
+                                                           // let expected_bits = &scalar_bits[chunk_index * chunk_size..][..chunk_size];
+
+        // println!("expected bits:{:?}", expected_bits);
+        // println!("chunk_bits:{:?}", chunk_bits);
+
+        // 比较提取的位块与期望的位块
+        // assert_eq!(
+        //     chunk_bits, expected_bits,
+        //     "Extracted chunk does not match expected bits."
+        // );
     }
 }
