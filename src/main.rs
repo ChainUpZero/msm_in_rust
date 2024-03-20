@@ -7,7 +7,6 @@ use ark_std::UniformRand;
 
 fn main() {
     let (points, scalars) = generate_random_points_and_scalars(10);
-    assert_eq!(points.len(), scalars.len());
 
     let naive_msm_res = naive_msm(&points, &scalars);
 
@@ -82,15 +81,21 @@ fn b_bit_msm(
     //result of
     let mut t_points: Vec<G1Projective> = Vec::new();
 
-    //compute Tj for j = 0..k
-    for j in 0..k {
+    //compute Ti for i = 0..k
+    for i in 0..k {
         let mut scalars_c_bits = vec![<Bls12_381 as PairingEngine>::Fr::zero(); scalars.len()];
-        for (i, scalar) in scalars.iter().enumerate() {
-            let c_bit_chunk = get_c_bit_chunk(scalar, j, c);
-            scalars_c_bits[i] = c_bit_chunk;
+        for (j, scalar) in scalars.iter().enumerate() {
+            //example:
+            //scalar == 010 011 001 100
+            //get_c_bit_chunk(scalar,0,3) return 010
+            //get_c_bit_chunk(scalar,1,3) return 011
+            let c_bit_chunk = get_c_bit_chunk(scalar, i, c);
+            scalars_c_bits[j] = c_bit_chunk;
         }
-        // now scalars_c_bits = vectors of coefficient in Tj
-        // use c_bit_msm to compute Tj and push Tj in to t_points array
+        //
+
+        // now scalars_c_bits = vectors of coefficient in Ti
+        // use c_bit_msm to compute Ti and push Ti in to t_points array
         t_points.push(c_bit_msm(points, &scalars_c_bits, c));
     }
 
@@ -119,7 +124,7 @@ fn get_c_bit_chunk(
     let bits = scalar.into_repr().to_bits_be();
 
     //get the desired chunk
-    let chunk_bits = bits[start_bit..std::cmp::min(end_bit, bits.len())].to_vec();
+    let chunk_bits = bits[start_bit..end_bit].to_vec();
 
     //convert chunk_bits to appropraite representation in Fr
     let chunk_repr =
@@ -132,16 +137,13 @@ fn get_c_bit_chunk(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_ec::PairingEngine;
-
-    use ark_std::test_rng;
 
     #[test]
     fn test_msm() {
         let (points, scalars) = generate_random_points_and_scalars(50);
 
         let naive_msm_result = naive_msm(&points, &scalars);
-        let b_bit_msm_result = b_bit_msm(&points, &scalars, 256, 4);
+        let b_bit_msm_result = b_bit_msm(&points, &scalars, 256, 2);
 
         assert_eq!(
             naive_msm_result.into_affine(),
