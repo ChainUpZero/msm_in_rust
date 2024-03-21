@@ -1,12 +1,11 @@
 [package]
-name = "zkspartan"
+name = "zkmsm"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ark-bls12-381 = "0.3.0"  
-ark-ff = "0.3.0"        
-ark-ec = "0.3.0"
-ark-std = "0.3.0"
+bls12_381 = {path = "lib/bls12_381"}
+rand = "0.8.5"
+group = "0.13.0"
